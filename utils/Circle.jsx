@@ -1,20 +1,16 @@
 "use client";
-import React, { useRef, useEffect } from "react";
-import { useSelector, useDispatch } from "react-redux";
-import { setSelectedDay } from "../store/slices/cycleSlice";
+import React, { useState, useRef, useEffect } from "react";
 
 const CircleSquares = ({
   count = 28,
   radius = 100,
   size = 30,
+  permanentHighlightIndex = 14,
   permanentHighlightColor = "#6A0DAD",
   userHighlightColor = "#FF6B81",
 }) => {
+  const [userHighlightedIndex, setUserHighlightedIndex] = useState(-1);
   const containerRef = useRef(null);
-  const dispatch = useDispatch();
-
-  const selectedDay = useSelector((state) => state.cycle.selectedDay);
-  const permanentDay = useSelector((state) => state.cycle.permanentDay);
 
   const getIndexFromCoords = (clientX, clientY) => {
     const rect = containerRef.current.getBoundingClientRect();
@@ -26,18 +22,20 @@ const CircleSquares = ({
     const angle = Math.atan2(dy, dx);
     const adjustedAngle = angle - Math.PI / 2;
     const normalizedAngle = (adjustedAngle + 2 * Math.PI) % (2 * Math.PI);
+
     return Math.round((normalizedAngle / (2 * Math.PI)) * count) % count;
   };
 
   const handlePointerMove = (clientX, clientY) => {
     if (!containerRef.current) return;
     const index = getIndexFromCoords(clientX, clientY);
-    if (index !== permanentDay) {
-      dispatch(setSelectedDay(index));
-    }
+    setUserHighlightedIndex(index); // remove the condition
   };
 
+  // Mouse
   const handleMouseMove = (e) => handlePointerMove(e.clientX, e.clientY);
+
+  // Touch
   const handleTouchMove = (e) => {
     if (e.touches.length > 0) {
       const touch = e.touches[0];
@@ -61,34 +59,45 @@ const CircleSquares = ({
   }, []);
 
   const squares = [];
+
   for (let i = 0; i < count; i++) {
     const angle = (2 * Math.PI * i) / count + Math.PI / 2;
     const x = radius * Math.cos(angle);
     const y = radius * Math.sin(angle);
 
-    const isPermanent = i === permanentDay;
-    const isUserHighlighted = i === selectedDay;
+    const isPermanent = i === permanentHighlightIndex;
+    const isUserHighlighted = i === userHighlightedIndex;
 
     let backgroundColor = "#ccc";
-    if (isPermanent) backgroundColor = permanentHighlightColor;
-    else if (isUserHighlighted) backgroundColor = userHighlightColor;
+    let border = "none";
+
+    if (isPermanent && isUserHighlighted) {
+      backgroundColor = userHighlightColor;
+      border = `4px solid ${permanentHighlightColor}`;
+    } else if (isPermanent) {
+      backgroundColor = permanentHighlightColor;
+    } else if (isUserHighlighted) {
+      backgroundColor = userHighlightColor;
+    }
 
     const isHighlighted = isPermanent || isUserHighlighted;
+    const shouldOffset = isHighlighted && !(isPermanent && isUserHighlighted);
 
     squares.push(
       <div
         key={i}
         style={{
           position: "absolute",
-          left: `calc(50% + ${x}px - ${size / 2}px - ${
-            isHighlighted ? "5px" : "0px"
-          })`,
-          top: `calc(50% + ${y}px - ${size / 2}px - ${
-            isHighlighted ? "5px" : "0px"
-          })`,
-          width: `${isHighlighted ? size * 1.4 : size}px`,
-          height: `${isHighlighted ? size * 1.4 : size}px`,
+          left: `calc(50% + ${
+            x - (isHighlighted ? (shouldOffset ? 10 : 15) : 0)
+          }px - ${size / 2}px)`,
+          top: `calc(50% + ${
+            y - (isHighlighted ? (shouldOffset ? 10 : 15) : 0)
+          }px - ${size / 2}px)`,
+          width: `${isHighlighted ? size * 2 : size}px`,
+          height: `${isHighlighted ? size * 2 : size}px`,
           backgroundColor,
+          border,
           borderRadius: "50%",
           display: "flex",
           alignItems: "center",
@@ -100,10 +109,11 @@ const CircleSquares = ({
           boxShadow: isHighlighted ? "0 0 12px rgba(0,0,0,0.2)" : "none",
           zIndex: isHighlighted ? 10 : 1,
           userSelect: "none",
+          cursor: "pointer",
           touchAction: "none",
         }}
       >
-        {isHighlighted && i}
+        {isHighlighted && i + 1}
       </div>
     );
   }
@@ -116,7 +126,7 @@ const CircleSquares = ({
         width: `${radius * 2 + size}px`,
         height: `${radius * 2 + size}px`,
         margin: "auto",
-        touchAction: "none",
+        touchAction: "none", // disable scroll while dragging
       }}
     >
       {squares}
