@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
+import "../css/cycle.css";
+import TextRing from "./components/TextRing";
 
 const CircleSquares = ({
   count = 28,
@@ -119,18 +121,22 @@ const CircleSquares = ({
   }
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        position: "relative",
-        width: `${radius * 2 + size}px`,
-        height: `${radius * 2 + size}px`,
-        margin: "auto",
-        touchAction: "none", // disable scroll while dragging
-      }}
-    >
-      {squares}
-    </div>
+    <>
+      <TextRing />
+
+      <div
+        ref={containerRef}
+        style={{
+          position: "relative",
+          width: `${radius * 2 + size}px`,
+          height: `${radius * 2 + size}px`,
+          margin: "auto",
+          touchAction: "none", // disable scroll while dragging
+        }}
+      >
+        {squares}
+      </div>
+    </>
   );
 };
 
