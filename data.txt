@@ -1,0 +1,253 @@
+---
+
+## 🧠 **Purpose**
+
+This code predicts the **next period start date, end date, ovulation day, and PMS window**, using a smart mix of weighted averages, outlier removal, and date processing.
+
+---
+
+## 🧩 Full Architecture Breakdown
+
+---
+
+### 🔹 Step 1: Utility Functions
+
+#### 1. **`weightedAverage(values, weights)`**
+
+```js
+function weightedAverage(values, weights) {
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  return values.reduce((sum, val, i) => sum + val * weights[i], 0) / totalWeight;
+}
+```
+
+* Computes a **weighted average** where **more recent cycles get higher weights**.
+* Example: Weights = `[1, 2, 3]` means the last entry is 3× more important than the first.
+
+---
+
+#### 2. **`removeOutliers(data, threshold = 10)`**
+
+```js
+function removeOutliers(data, threshold = 10) {
+  const avg = data.reduce((a, b) => a + b, 0) / data.length;
+  return data.filter(x => Math.abs(x - avg) <= threshold);
+}
+```
+
+* Removes any values that are **too far off from the average** (default ±10 days).
+* Prevents incorrect predictions caused by accidental wrong entries or missed periods.
+
+---
+
+#### 3. **`isValidDate(d)`**
+
+```js
+function isValidDate(d) {
+  return d instanceof Date && !isNaN(d);
+}
+```
+
+* Makes sure the `Date` object is not `"Invalid Date"`.
+* Prevents crash when calling `.toISOString()` on broken dates.
+
+---
+
+### 🔹 Step 2: Main Prediction Function
+
+```js
+export function predictNextCycle(logs) {
+```
+
+The function receives an array of logs:
+
+```js
+[
+  { from: "2024-04-01", to: "2024-04-06" },
+  { from: "2024-05-01", to: "2024-05-06" }
+]
+```
+
+Each entry is a past period (start and end).
+
+---
+
+### 🔸 Step 2.1: Convert to Date Objects + Duration
+
+```js
+const sortedLogs = logs
+  .map(log => {
+    const from = new Date(log.from);
+    const to = new Date(log.to);
+    return {
+      from,
+      to,
+      duration: (to - from) / (1000 * 60 * 60 * 24)
+    };
+  })
+  .filter(log => isValidDate(log.from) && isValidDate(log.to) && log.duration > 0)
+  .sort((a, b) => a.from - b.from);
+```
+
+**What it does:**
+
+* Converts each `from` and `to` into a `Date` object.
+* Calculates how long each period lasted in **days**.
+* Filters out invalid or negative durations.
+* Sorts logs in ascending order (earliest to latest).
+
+---
+
+### 🔸 Step 2.2: Cycle Length Calculation
+
+```js
+const cycleGaps = [];
+for (let i = 1; i < sortedLogs.length; i++) {
+  const diff = (sortedLogs[i].from - sortedLogs[i - 1].from) / (1000 * 60 * 60 * 24);
+  if (diff > 0) cycleGaps.push(diff);
+}
+```
+
+* Finds the **gap in days between each period start date**.
+* This helps calculate **average cycle length**.
+
+---
+
+### 🔸 Step 2.3: Clean the Data
+
+```js
+const cleanedCycles = removeOutliers(cycleGaps);
+const cycleWeights = cleanedCycles.map((_, i) => i + 1);
+
+const cleanedDurationsRaw = sortedLogs.map(log => log.duration).filter(d => !isNaN(d) && d > 0);
+const cleanedDurations = removeOutliers(cleanedDurationsRaw);
+const durationWeights = cleanedDurations.map((_, i) => i + 1);
+```
+
+* Removes weird entries using `removeOutliers`.
+* Adds weights to newer entries using index-based weighting.
+
+---
+
+### 🔸 Step 2.4: Compute Averages (Fallback-safe)
+
+```js
+const avgCycle = cleanedCycles.length
+  ? Math.round(weightedAverage(cleanedCycles, cycleWeights))
+  : 28;
+
+const avgDuration = cleanedDurations.length
+  ? Math.round(weightedAverage(cleanedDurations, durationWeights))
+  : 5;
+```
+
+* If there’s enough good data → use weighted averages.
+* Otherwise → fallback to default **28-day cycle** and **5-day period**.
+
+---
+
+### 🔸 Step 2.5: Predict the Future Dates
+
+```js
+const lastStart = sortedLogs[sortedLogs.length - 1].from;
+```
+
+This is the **last known period start**.
+
+Now we predict the future 👇
+
+```js
+const predictedStart = new Date(lastStart);
+predictedStart.setDate(predictedStart.getDate() + avgCycle);
+```
+
+* Adds the average cycle length to the last period start to get the **next expected start**.
+
+```js
+const predictedEnd = new Date(predictedStart);
+predictedEnd.setDate(predictedStart.getDate() + avgDuration);
+```
+
+* Adds average period length → gives you **predicted end date**.
+
+```js
+const predictedOvulation = new Date(predictedStart);
+predictedOvulation.setDate(predictedStart.getDate() - 14);
+```
+
+* Assumes ovulation is **14 days before next period** (standard for most people).
+
+```js
+const predictedPMSStart = new Date(predictedStart);
+predictedPMSStart.setDate(predictedStart.getDate() - 5);
+```
+
+* Assumes **PMS starts 5 days before next period**.
+
+---
+
+### 🔸 Step 2.6: Irregularity Check
+
+```js
+const stdDev = Math.sqrt(
+  cleanedCycles.reduce((sum, x) => sum + Math.pow(x - avgCycle, 2), 0) / cleanedCycles.length
+);
+
+const isIrregular = stdDev > 7;
+```
+
+* Calculates **standard deviation** of cycle lengths.
+* If std dev > 7 → the cycle is considered **irregular**.
+
+---
+
+### 🔸 Step 2.7: Return Everything Cleanly
+
+```js
+return {
+  averageCycleLength: avgCycle,
+  averagePeriodDuration: avgDuration,
+  cycleStandardDeviation: Math.round(stdDev),
+  isIrregular,
+  lastPeriodStart: isValidDate(lastStart) ? lastStart.toISOString().split("T")[0] : null,
+  predictedPeriodStart: isValidDate(predictedStart) ? predictedStart.toISOString().split("T")[0] : null,
+  predictedPeriodEnd: isValidDate(predictedEnd) ? predictedEnd.toISOString().split("T")[0] : null,
+  predictedOvulation: isValidDate(predictedOvulation) ? predictedOvulation.toISOString().split("T")[0] : null,
+  predictedPMSStart: isValidDate(predictedPMSStart) ? predictedPMSStart.toISOString().split("T")[0] : null
+};
+```
+
+* Converts all dates to `"YYYY-MM-DD"` format.
+* Fails safely (`null`) if any prediction is invalid.
+
+---
+
+## 📦 Output Example
+
+```js
+{
+  averageCycleLength: 29,
+  averagePeriodDuration: 5,
+  cycleStandardDeviation: 3,
+  isIrregular: false,
+  lastPeriodStart: "2024-06-01",
+  predictedPeriodStart: "2024-06-30",
+  predictedPeriodEnd: "2024-07-05",
+  predictedOvulation: "2024-06-16",
+  predictedPMSStart: "2024-06-25"
+}
+```
+
+---
+
+## 🤯 Summary
+
+| Feature                | Logic                                       |
+| ---------------------- | ------------------------------------------- |
+| 🧠 Smart prediction    | Weighted average, outlier filtering         |
+| 🩸 Period duration     | Based on historical logs                    |
+| 🕒 Ovulation + PMS     | Rule-based biology model                    |
+| 🔍 Irregular detection | Based on standard deviation                 |
+| 🔐 Crash proof         | Handles missing, invalid, weird data safely |
+
+---
