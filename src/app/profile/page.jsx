@@ -12,7 +12,7 @@ export default function ProfilePage() {
 
   const getUserDetails = async () => {
     try {
-      const token = localStorage.getItem("token"); // Or wherever you store it
+      const token = localStorage.getItem("token");
       const res = await axios.post(
         "/api/users/me",
         {},
