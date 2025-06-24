@@ -1,6 +1,6 @@
-import Footer from "@/utils/components/Footer";
-import "../css/main.css";
-import CircleSquares from "../utils/Circle";
+import Footer from "utils/components/Footer";
+import "css/main.css";
+import CircleSquares from "utils/Circle";
 
 export default function Home() {
   return (
