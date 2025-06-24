@@ -7,7 +7,7 @@ await connect();
 
 export async function POST(request) {
   const userId = await getDataFromToken(request);
-  const user = User.findOne({ uuid: userId }).select("-passoword");
+  const user = await User.findOne({ uuid: userId }).select("-passoword");
 
   return NextResponse.json({
     message: "User Found",
